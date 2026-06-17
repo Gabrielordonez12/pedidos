@@ -168,6 +168,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:1
 .ic-val.hi{color:var(--accent);font-weight:600;}
 .ic-val.mo{color:#065f46;font-weight:600;}
 .ic-val.dt{color:var(--text2);font-size:12px;}
+.ic.wide{grid-column:span 2;}
 .chip{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600;font-family:var(--mono);margin-top:5px;}
 .chip.late  {background:var(--danger-lt);color:var(--danger);border:1px solid #fecaca;}
 .chip.ontime{background:var(--success-lt);color:var(--success);border:1px solid #a7f3d0;}
@@ -310,7 +311,7 @@ const msalConfig = {
   auth: {
     clientId: '2ba0441f-5e48-4d46-85f7-389495bf888e',
     authority: 'https://login.microsoftonline.com/e678709d-3a87-4e10-b1c8-b3b80517836c',
-    redirectUri: window.location.href.split('?')[0],
+    redirectUri: window.location.origin + window.location.pathname,
   },
   cache: { cacheLocation: 'sessionStorage' }
 };
@@ -371,9 +372,38 @@ async function syncData() {
 
     const ts = new Date().toLocaleDateString('es-CO') + ' ' + new Date().toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'});
     const lu = document.getElementById('last-upd');
-    lu.textContent = '✓ Sync ' + ts; lu.className = 'last-upd fresh'; lu.style.display = '';
+    lu.textContent = '✓ Sync ' + ts + ' · próximo en 30 min'; lu.className = 'last-upd fresh'; lu.style.display = '';
+    let _mins = 29;
+    if (window._cdTimer) clearInterval(window._cdTimer);
+    window._cdTimer = setInterval(() => {
+      if (_mins <= 0) { clearInterval(window._cdTimer); return; }
+      document.getElementById('last-upd').textContent = '✓ Sync ' + ts + ' · próximo en ' + _mins + ' min';
+      _mins--;
+    }, 60000);
     ['dvdr1','dvdr2','hstat-reqs','hstat-items','sync-btn'].forEach(id => document.getElementById(id).style.display = '');
     toast('success','✅','Datos actualizados', parsed.length.toLocaleString('es-CO') + ' ítems cargados');
+    // Auto-refresh every 30 minutes
+    if (!window._autoRefreshStarted) {
+      window._autoRefreshStarted = true;
+      setInterval(async () => {
+        try {
+          const token = await getToken();
+          if (!token) return;
+          const encoded = btoa(unescape(encodeURIComponent(FILE_URL))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+          const graphUrl = 'https://graph.microsoft.com/v1.0/shares/u!' + encoded + '/driveItem/content';
+          const resp = await fetch(graphUrl, { headers: { Authorization: 'Bearer ' + token } });
+          if (!resp.ok) return;
+          const buffer = await resp.arrayBuffer();
+          const wb = XLSX.read(new Uint8Array(buffer), { type: 'array', cellDates: false });
+          const parsed = parseXL(wb);
+          if (!parsed.length) return;
+          DATA = parsed; rebuild(); updateSummary(); render();
+          const ts = new Date().toLocaleDateString('es-CO') + ' ' + new Date().toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'});
+          const lu = document.getElementById('last-upd');
+          lu.textContent = '✓ Auto-sync ' + ts; lu.className = 'last-upd fresh';
+        } catch(e) { console.warn('Auto-refresh failed:', e.message); }
+      }, 30 * 60 * 1000); // 30 minutos
+    }
   } catch(e) {
     showError(e.message);
     toast('error','❌','Error de sincronización', e.message);
@@ -410,6 +440,7 @@ function parseXL(wb){
     status:calcStatus(r.NumeroFactura!=null,r.NumeroOrden!=null),
     ubicacion:calcUbi(r.NumeroFactura!=null,r.NumeroOrden!=null),
     centro_costo:r.CentroCostoOrden?r.CentroCostoOrden.toString().trim():'',
+    nombre_centro_costo:r.NombreCentroCostos?r.NombreCentroCostos.toString().trim():'',
   }));
 }
 
@@ -460,7 +491,7 @@ function timeline(item){
   ).join('')+'</div>';
 }
 
-function ic(lbl,val,cls){return '<div class="ic"><div class="ic-lbl">'+lbl+'</div><div class="ic-val'+(cls?' '+cls:'')+'">'+(val||'—')+'</div></div>';}
+function ic(lbl,val,cls){return '<div class="ic'+(cls&&cls.includes('wide')?' wide':'')+'"><div class="ic-lbl">'+lbl+'</div><div class="ic-val'+(cls?' '+cls.replace('wide','').trim():'')+'">'+(val||'—')+'</div></div>';}
 
 function deliveryCell(item){
   if(!item.fecha_orden||!item.fecha_entrega_esperada) return ic('⏱ Tiempo Pactado','Sin datos','dt');
@@ -502,7 +533,7 @@ function renderItem(item){
       (item.fecha_entrega_real?ic('📥 Fecha Recibo',fmtD(item.fecha_entrega_real),'dt'):'')+
       (item.factura?ic('🧾 N° Factura',item.factura):'')+
       (item.valor_factura?ic('💳 Valor Facturado',money(item.valor_factura),'mo'):'')+
-      (item.centro_costo&&item.centro_costo!=='nan'?ic('🏗 Centro de Costo','<span style="font-size:11px">'+item.centro_costo+'</span>'):'')+
+      (item.nombre_centro_costo?ic('🏗 Proyecto / Centro de Costo','<span style="font-size:11.5px;line-height:1.4">'+item.nombre_centro_costo+'</span>','wide hi'):(item.centro_costo&&item.centro_costo!=='nan'?ic('🏗 Centro de Costo','<span style="font-size:11px">'+item.centro_costo+'</span>'):''))+
     '</div></div>';
 }
 
@@ -528,7 +559,7 @@ function render(){
       else if(curFilter==='Recibido en Almacén'){if(!items.every(i=>i.status==='Recibido en Almacén'))return false;}
       else{if(!items.some(i=>i.status===curFilter))return false;}
     }
-    if(q){const s=[num,...items.map(i=>[i.nombre_req,i.producto,i.proveedor,i.comprador,i.orden].join(' '))].join(' ').toLowerCase();if(!s.includes(q))return false;}
+    if(q){const s=[num,...items.map(i=>[i.nombre_req,i.producto,i.proveedor,i.comprador,i.orden,i.nombre_centro_costo].join(' '))].join(' ').toLowerCase();if(!s.includes(q))return false;}
     return true;
   });
   filtered.sort((a,b)=>{const va=isVenc(a[1])?1:0,vb=isVenc(b[1])?1:0;return va!==vb?vb-va:b[0]-a[0];});
