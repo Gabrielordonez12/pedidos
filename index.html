@@ -7,6 +7,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@2.38.3/lib/msal-browser.min.js"></script>
 <style>
 :root {
   --bg:#f5f7fa; --white:#ffffff; --surface2:#f0f4f8;
@@ -203,9 +204,9 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:1
       <div class="user-avatar" id="user-avatar">?</div>
       <span id="user-name">—</span>
     </div>
-    <button class="sync-btn" id="sync-btn" style="display:none" onclick="syncData()">
+    <button class="sync-btn" id="sync-btn" style="display:none">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-      Actualizar
+      <span id="sync-label">Actualizar</span>
     </button>
     <button class="logout-btn" id="logout-btn" style="display:none" onclick="signOut()">Cerrar sesión</button>
   </div>
@@ -226,7 +227,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:1
       </svg>
       Iniciar sesión con Microsoft
     </button>
-    <a href="https://prometeo-hybrytec.vercel.apppedidos-phi-eight.vercel.app" class="back-link">← Volver al portal</a>
+    <a href="https://prometeo-hybrytec.vercel.app" class="back-link">← Volver al portal</a>
   </div>
 </div>
 
@@ -308,6 +309,20 @@ const FILE_URL = 'https://hybrytec-my.sharepoint.com/personal/directorcadenadesu
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
+// ── MSAL config (Graph API read-only access to the Tracking.xlsx file) ─
+const msalConfig = {
+  auth: {
+    clientId: '2ba0441f-5e48-4d46-85f7-389495bf888e',
+    authority: 'https://login.microsoftonline.com/e678709d-3a87-4e10-b1c8-b3b80517836c',
+    redirectUri: window.location.origin + window.location.pathname,
+  },
+  cache: { cacheLocation: 'sessionStorage' }
+};
+const GRAPH_SCOPES = ['Files.Read.All', 'Sites.Read.All'];
+const msalInstance = new msal.PublicClientApplication(msalConfig);
+let _msalReady = false;
+let _userEmail = null;
+
 // ── Auth ─────────────────────────────────────────────────────────────
 async function signIn() {
   showLoading('Redirigiendo a Microsoft...');
@@ -365,25 +380,86 @@ function parseXL(wb){
   }));
 }
 
-let _accessToken = null;
-
-async function syncData() {
-  setSyncLoading(true);
-  setLoadingMsg('Conectando con SharePoint...');
+async function getGraphToken(interactive) {
+  if (!_msalReady) { await msalInstance.initialize(); await msalInstance.handleRedirectPromise(); _msalReady = true; }
+  const accounts = msalInstance.getAllAccounts();
+  if (accounts.length) {
+    try { return (await msalInstance.acquireTokenSilent({ scopes: GRAPH_SCOPES, account: accounts[0] })).accessToken; }
+    catch(e) { /* fall through */ }
+  }
   try {
-    // Get Supabase session to use its access token for Graph API via proxy
-    // Since we can't call Graph directly from a static HTML without MSAL,
-    // we load the embedded baseline data and show it
-    // The app auto-refreshes when opened (data is always fresh from last upload)
-    loadBaselineData();
-    const ts = new Date().toLocaleDateString('es-CO')+' '+new Date().toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'});
-    const lu = document.getElementById('last-upd');
-    lu.textContent='✓ Sync '+ts; lu.className='last-upd fresh'; lu.style.display='';
-    ['dvdr1','dvdr2','hstat-reqs','hstat-items'].forEach(id=>document.getElementById(id).style.display='');
-    document.getElementById('sync-btn').style.display='';
-    toast('success','✅','Datos cargados', DATA.length.toLocaleString('es-CO')+' ítems listos');
+    return (await msalInstance.ssoSilent({ scopes: GRAPH_SCOPES, loginHint: _userEmail })).accessToken;
   } catch(e) {
-    showError(e.message);
+    // ssoSilent falla si el navegador bloquea cookies de terceros o no hay sesión activa de AAD.
+    // No abrir un popup automáticamente aquí: los navegadores bloquean popups no iniciados
+    // por un clic del usuario. Se requiere un gesto explícito (botón "Conectar SharePoint").
+    if (!interactive) { const err = new Error('Se requiere reconectar con SharePoint'); err.needsPopup = true; throw err; }
+    return (await msalInstance.loginPopup({ scopes: GRAPH_SCOPES, loginHint: _userEmail })).accessToken;
+  }
+}
+
+async function fetchTracking(interactive) {
+  const token = await getGraphToken(interactive);
+  const encoded = btoa(unescape(encodeURIComponent(FILE_URL))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+  const graphUrl = 'https://graph.microsoft.com/v1.0/shares/u!' + encoded + '/driveItem/content';
+  const resp = await fetch(graphUrl, { headers: { Authorization: 'Bearer ' + token } });
+  if (!resp.ok) throw new Error('No se pudo acceder al archivo en SharePoint (código ' + resp.status + ')');
+  const buffer = await resp.arrayBuffer();
+  const wb = XLSX.read(new Uint8Array(buffer), { type: 'array', cellDates: false });
+  const parsed = parseXL(wb);
+  if (!parsed.length) throw new Error('El archivo no contiene datos válidos');
+  return parsed;
+}
+
+function markLastUpd(text, warn){
+  const lu = document.getElementById('last-upd');
+  lu.textContent = text; lu.className = 'last-upd' + (warn ? '' : ' fresh'); lu.style.display = '';
+  ['dvdr1','dvdr2','hstat-reqs','hstat-items'].forEach(id=>document.getElementById(id).style.display='');
+  document.getElementById('sync-btn').style.display='';
+}
+
+function setConnectMode(needsConnect){
+  const btn = document.getElementById('sync-btn');
+  document.getElementById('sync-label').textContent = needsConnect ? 'Conectar SharePoint' : 'Actualizar';
+  btn.onclick = needsConnect ? connectSharePoint : () => syncData();
+}
+
+async function connectSharePoint(){ await syncData(false, true); }
+
+function startAutoRefresh(){
+  if (window._autoRefreshStarted) return;
+  window._autoRefreshStarted = true;
+  setInterval(() => syncData(true), 30 * 60 * 1000); // cada 30 min mientras la pestaña esté abierta
+}
+
+let _liveEverLoaded = false;
+
+async function syncData(silent, interactive) {
+  setSyncLoading(true);
+  if (!silent) setLoadingMsg('Conectando con SharePoint...');
+  try {
+    const parsed = await fetchTracking(interactive);
+    DATA = parsed; rebuild(); updateSummary(); render(); showApp();
+    _liveEverLoaded = true;
+    setConnectMode(false);
+    const ts = new Date().toLocaleDateString('es-CO')+' '+new Date().toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'});
+    markLastUpd('✓ Sync '+ts);
+    startAutoRefresh();
+    if (!silent) toast('success','✅','Datos actualizados', DATA.length.toLocaleString('es-CO')+' ítems cargados desde SharePoint');
+  } catch(e) {
+    console.warn('Live sync failed:', e.message);
+    if (!_liveEverLoaded) {
+      // Primera carga sin conexión a Graph: mostrar el último snapshot guardado para no dejar la app en blanco
+      loadBaselineData();
+      if (!DATA.length) { showError('No se pudo conectar con SharePoint ni cargar datos guardados: ' + e.message); return; }
+      markLastUpd('⚠ Sin conexión a SharePoint — mostrando última copia guardada', true);
+    }
+    if (e.needsPopup) {
+      setConnectMode(true);
+      if (!silent) toast('info','🔗','Conecta tu cuenta de SharePoint','Haz clic en "Conectar SharePoint" para ver datos en vivo');
+    } else if (!silent) {
+      toast('error','⚠️','No se pudo sincronizar con SharePoint', e.message);
+    }
   } finally { setSyncLoading(false); }
 }
 
@@ -520,6 +596,7 @@ window.addEventListener('DOMContentLoaded', async function() {
 
   // Show user info
   const user = session.user;
+  _userEmail = user.email;
   const name = user.user_metadata?.full_name || user.email?.split('@')[0] || 'Usuario';
   const initials = name.split(' ').map(n=>n[0]).join('').slice(0,2).toUpperCase();
   document.getElementById('user-avatar').textContent = initials;
