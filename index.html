@@ -314,7 +314,7 @@ const msalConfig = {
   auth: {
     clientId: '2ba0441f-5e48-4d46-85f7-389495bf888e',
     authority: 'https://login.microsoftonline.com/e678709d-3a87-4e10-b1c8-b3b80517836c',
-    redirectUri: window.location.origin + window.location.pathname,
+    redirectUri: window.location.origin + '/',
   },
   cache: { cacheLocation: 'sessionStorage' }
 };
@@ -583,7 +583,7 @@ window.addEventListener('DOMContentLoaded', async function() {
   if (hash && hash.includes('access_token')) {
     const { data, error } = await sb.auth.getSession();
     if (!error && data.session) {
-      window.history.replaceState({}, document.title, window.location.pathname);
+      window.history.replaceState({}, document.title, '/');
     }
   }
 
