@@ -407,7 +407,15 @@ async function fetchTracking(interactive) {
   const buffer = await resp.arrayBuffer();
   const wb = XLSX.read(new Uint8Array(buffer), { type: 'array', cellDates: false });
   const parsed = parseXL(wb);
-  if (!parsed.length) throw new Error('El archivo no contiene datos válidos');
+  if (!parsed.length) {
+    const rawRows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: null });
+    console.warn('[HybryTrack DEBUG] bytes descargados:', buffer.byteLength);
+    console.warn('[HybryTrack DEBUG] hojas del libro:', wb.SheetNames);
+    console.warn('[HybryTrack DEBUG] filas en la primera hoja:', rawRows.length);
+    console.warn('[HybryTrack DEBUG] columnas de la fila 1:', rawRows[0] ? Object.keys(rawRows[0]) : '(sin filas)');
+    console.warn('[HybryTrack DEBUG] fila 1 completa:', rawRows[0]);
+    throw new Error('El archivo no contiene datos válidos');
+  }
   return parsed;
 }
 
