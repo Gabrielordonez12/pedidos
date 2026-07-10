@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>HybryTrack — Hybrytec</title>
+<title>Nexus — Hybrytec</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700;12..96,800&family=Hanken+Grotesk:wght@400;500;600;700&family=Encode+Sans+Condensed:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -197,7 +197,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:1
     </svg>
   </div>
   <div>
-    <div class="header-title">HybryTrack</div>
+    <div class="header-title">Nexus</div>
     <div class="header-sub">Cadena de Suministro</div>
   </div>
   <div class="header-right">
@@ -222,7 +222,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:1
 <div id="login-screen" class="login-screen">
   <div class="login-card">
     <div class="login-icon">📦</div>
-    <div class="login-title">HybryTrack — Hybrytec</div>
+    <div class="login-title">Nexus — Hybrytec</div>
     <div class="login-sub">Inicia sesión con tu cuenta corporativa para acceder al seguimiento de requisiciones en tiempo real.</div>
     <button class="ms-btn" onclick="signIn()">
       <svg width="20" height="20" viewBox="0 0 21 21" fill="none">
@@ -426,11 +426,11 @@ async function fetchTracking(interactive) {
   const parsed = parseXL(wb);
   if (!parsed.length) {
     const rawRows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: null });
-    console.warn('[HybryTrack DEBUG] bytes descargados:', buffer.byteLength);
-    console.warn('[HybryTrack DEBUG] hojas del libro:', wb.SheetNames);
-    console.warn('[HybryTrack DEBUG] filas en la primera hoja:', rawRows.length);
-    console.warn('[HybryTrack DEBUG] columnas de la fila 1:', rawRows[0] ? Object.keys(rawRows[0]) : '(sin filas)');
-    console.warn('[HybryTrack DEBUG] fila 1 completa:', rawRows[0]);
+    console.warn('[Nexus DEBUG] bytes descargados:', buffer.byteLength);
+    console.warn('[Nexus DEBUG] hojas del libro:', wb.SheetNames);
+    console.warn('[Nexus DEBUG] filas en la primera hoja:', rawRows.length);
+    console.warn('[Nexus DEBUG] columnas de la fila 1:', rawRows[0] ? Object.keys(rawRows[0]) : '(sin filas)');
+    console.warn('[Nexus DEBUG] fila 1 completa:', rawRows[0]);
     throw new Error('El archivo no contiene datos válidos');
   }
   return parsed;
