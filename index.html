@@ -386,7 +386,7 @@ function parseXL(wb){
     fecha_req:exDate(r.FechaRequisicion),
     fecha_orden:exDate(r.FechaOrden),
     fecha_entrega_esperada:exDate(r.FechaEntregaOrden),
-    fecha_entrega_real:exDate(r.FechaEntrega),
+    fecha_entrega_real:exDate(r.FechaFactura),
     factura:r.NumeroFactura?parseInt(r.NumeroFactura):null,
     factura_proveedor:r.NumeroFacturaProveedor?r.NumeroFacturaProveedor.toString():null,
     valor_factura:r.ValorTotalItemFacturado?parseFloat(r.ValorTotalItemFacturado):null,
