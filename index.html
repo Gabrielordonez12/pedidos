@@ -570,21 +570,28 @@ function renderItem(item){
 }
 
 let curFilter='all', curSearch='', curCC='';
+function baseFiltered(){
+  const q=curSearch.toLowerCase().trim();
+  return Object.entries(reqMap).filter(([num,items])=>{
+    if(curCC){if(!items.some(i=>(i.nombre_centro_costo||i.centro_costo)===curCC))return false;}
+    if(q){const s=[num,...items.map(i=>[i.nombre_req,i.producto,i.proveedor,i.comprador,i.orden,i.nombre_centro_costo].join(' '))].join(' ').toLowerCase();if(!s.includes(q))return false;}
+    return true;
+  });
+}
 function updateSummary(){
-  const reqs=Object.values(reqMap);
+  const reqs=baseFiltered().map(([,items])=>items);
   document.getElementById('sv-total').textContent=reqs.length;
   document.getElementById('sv-recibido').textContent=reqs.filter(r=>r.every(i=>i.status==='Recibido en Almacén')).length;
   document.getElementById('sv-orden').textContent=reqs.filter(r=>r.some(i=>i.status==='Orden Emitida')).length;
   document.getElementById('sv-pendiente').textContent=reqs.filter(r=>r.some(i=>i.status==='Pendiente')).length;
-  document.getElementById('stat-reqs').textContent=reqs.length;
+  document.getElementById('stat-reqs').textContent=Object.keys(reqMap).length;
   document.getElementById('stat-items').textContent=DATA.length.toLocaleString('es-CO');
 }
 function render(){
-  const q=curSearch.toLowerCase().trim(),container=document.getElementById('results-container');
-  let filtered=Object.entries(reqMap).filter(([num,items])=>{
+  updateSummary();
+  const container=document.getElementById('results-container');
+  let filtered=baseFiltered().filter(([num,items])=>{
     if(curFilter!=='all'){if(curFilter==='vencidas'){if(!isVenc(items))return false;}else if(curFilter==='Recibido en Almacén'){if(!items.every(i=>i.status==='Recibido en Almacén'))return false;}else{if(!items.some(i=>i.status===curFilter))return false;}}
-    if(curCC){if(!items.some(i=>(i.nombre_centro_costo||i.centro_costo)===curCC))return false;}
-    if(q){const s=[num,...items.map(i=>[i.nombre_req,i.producto,i.proveedor,i.comprador,i.orden,i.nombre_centro_costo].join(' '))].join(' ').toLowerCase();if(!s.includes(q))return false;}
     return true;
   });
   filtered.sort((a,b)=>{const va=isVenc(a[1])?1:0,vb=isVenc(b[1])?1:0;return va!==vb?vb-va:b[0]-a[0];});
