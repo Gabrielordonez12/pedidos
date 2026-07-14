@@ -361,7 +361,7 @@ async function checkAccess(session) {
 }
 
 // ── SharePoint data fetch ────────────────────────────────────────────
-const CMAP={'ABASTECIMIENTO':'David López','SUMINISTROS':'Natalia Correa','SUMINISTROS3':'Valentina Quintero','SUMINISTROS4':'Natalia Vélez','SUMINISTROS2':'Gabriel Ordóñez'};
+const CMAP={'ABASTECIMIENTO':'David López','SUMINISTROS':'Natalia Correa','SUMINISTROS1':'David López','SUMINISTROS3':'Valentina Quintero','SUMINISTROS4':'Natalia Vélez','SUMINISTROS2':'Gabriel Ordóñez'};
 function mapC(v){if(!v)return 'Sin asignar';const k=v.toString().trim().toUpperCase();return CMAP[k]||v.toString().trim();}
 function exDate(v){if(!v)return null;if(typeof v==='number'){const d=new Date(Math.round((v-25569)*86400*1000));return d.toISOString().slice(0,10);}if(typeof v==='string'&&v.match(/\d{4}-\d{2}-\d{2}/))return v.slice(0,10);return null;}
 function calcStatus(hf,ho){if(hf)return 'Recibido en Almacén';if(ho)return 'Orden Emitida';return 'Pendiente';}
