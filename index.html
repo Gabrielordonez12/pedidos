@@ -279,6 +279,9 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:1
       <button class="qf-btn f-orden"     onclick="setFilter('Orden Emitida')"        id="f-Orden Emitida">📋 Orden Emitida</button>
       <button class="qf-btn f-pendiente" onclick="setFilter('Pendiente')"            id="f-Pendiente">⏳ Pendiente</button>
       <button class="qf-btn" onclick="setFilter('vencidas')" id="f-vencidas" style="border-color:#fca5a5;color:var(--danger)">⚠ Vencidas</button>
+      <select class="qf-btn" id="f-centro-costo" onchange="setCCFilter(this.value)" style="max-width:240px;">
+        <option value="">🏗 Centro de Costo</option>
+      </select>
     </div>
     <div class="summary-grid">
       <div class="sum-card c-total"    onclick="setFilter('all')"                 id="sc-all">
@@ -518,7 +521,15 @@ const BASELINE=[{"req":6744,"nombre_req":"CORAZA 3/4\" CON PROTECCION UV","produ
 let DATA=[...BASELINE], reqMap={};
 const TODAY=new Date(); TODAY.setHours(0,0,0,0);
 
-function rebuild(){reqMap={};DATA.forEach(i=>{if(!reqMap[i.req])reqMap[i.req]=[];reqMap[i.req].push(i);});}
+function rebuild(){reqMap={};DATA.forEach(i=>{if(!reqMap[i.req])reqMap[i.req]=[];reqMap[i.req].push(i);});populateCCFilter();}
+function populateCCFilter(){
+  const sel=document.getElementById('f-centro-costo');
+  if(!sel) return;
+  const vals=[...new Set(DATA.map(i=>i.nombre_centro_costo||i.centro_costo).filter(v=>v))].sort((a,b)=>a.localeCompare(b,'es'));
+  const prev=curCC;
+  sel.innerHTML='<option value="">🏗 Centro de Costo</option>'+vals.map(v=>'<option value="'+v.replace(/"/g,'&quot;')+'">'+v+'</option>').join('');
+  if(vals.includes(prev)){sel.value=prev;} else {curCC='';sel.value='';}
+}
 function reqStatus(items){const s=[...new Set(items.map(i=>i.status))];return s.length===1?s[0]:'Mixto';}
 function isVenc(items){return items.some(i=>i.status==='Orden Emitida'&&i.fecha_entrega_esperada&&new Date(i.fecha_entrega_esperada)<TODAY);}
 function reqTotal(items){return items.reduce((s,i)=>s+(i.valor_orden||0),0);}
@@ -558,7 +569,7 @@ function renderItem(item){
   return '<div class="item-row"><div class="item-top"><span class="badge '+bc(item.status)+'">'+item.status+'</span>'+(overdue?'<span class="overdue-tag">⚠ VENCIDA</span>':'')+' <span class="item-product">'+(item.producto||item.nombre_req)+'</span></div>'+timeline(item)+'<div class="item-grid">'+ic('📍 Status',item.ubicacion,'hi')+ic('🏢 Proveedor',item.proveedor)+ic('👤 Comprador',item.comprador)+ic('💰 Valor Orden',money(item.valor_orden),'mo')+deliveryCell(item)+ic('📋 N° Orden',item.orden||'—')+ic('📦 Cantidad',item.cantidad?item.cantidad.toLocaleString('es-CO'):'—')+ic('📅 Fecha OC',fmtD(item.fecha_orden),'dt')+ic('📅 Entrega Prometida',fmtD(item.fecha_entrega_esperada)+(overdue?' <span style="color:var(--danger)">⚠</span>':''),'dt')+(item.fecha_entrega_real?ic('📥 Fecha Recibo',fmtD(item.fecha_entrega_real),'dt'):'')+(item.factura?ic('🧾 N° Factura',item.factura):'')+(item.valor_factura?ic('💳 Valor Facturado',money(item.valor_factura),'mo'):'')+(item.nombre_centro_costo?ic('🏗 Proyecto / Centro de Costo','<span style="font-size:11.5px;line-height:1.4">'+item.nombre_centro_costo+'</span>','wide hi'):(item.centro_costo?ic('🏗 Centro de Costo','<span style="font-size:11px">'+item.centro_costo+'</span>'):''))+'</div></div>';
 }
 
-let curFilter='all', curSearch='';
+let curFilter='all', curSearch='', curCC='';
 function updateSummary(){
   const reqs=Object.values(reqMap);
   document.getElementById('sv-total').textContent=reqs.length;
@@ -572,6 +583,7 @@ function render(){
   const q=curSearch.toLowerCase().trim(),container=document.getElementById('results-container');
   let filtered=Object.entries(reqMap).filter(([num,items])=>{
     if(curFilter!=='all'){if(curFilter==='vencidas'){if(!isVenc(items))return false;}else if(curFilter==='Recibido en Almacén'){if(!items.every(i=>i.status==='Recibido en Almacén'))return false;}else{if(!items.some(i=>i.status===curFilter))return false;}}
+    if(curCC){if(!items.some(i=>(i.nombre_centro_costo||i.centro_costo)===curCC))return false;}
     if(q){const s=[num,...items.map(i=>[i.nombre_req,i.producto,i.proveedor,i.comprador,i.orden,i.nombre_centro_costo].join(' '))].join(' ').toLowerCase();if(!s.includes(q))return false;}
     return true;
   });
@@ -595,7 +607,8 @@ function setFilter(f){
   if(SC_MAP[curFilter])document.getElementById(SC_MAP[curFilter]).classList.add('active-filter');
   render();
 }
-function clearSearch(){document.getElementById('search-input').value='';curSearch='';curFilter='all';['all','Recibido en Almacén','Orden Emitida','Pendiente','vencidas'].forEach(k=>{const e=document.getElementById('f-'+k);if(e)e.classList.remove('active');});render();}
+function setCCFilter(v){curCC=v;const sel=document.getElementById('f-centro-costo');sel.classList.toggle('active',!!v);render();}
+function clearSearch(){document.getElementById('search-input').value='';curSearch='';curFilter='all';curCC='';const cc=document.getElementById('f-centro-costo');if(cc){cc.value='';cc.classList.remove('active');}['all','Recibido en Almacén','Orden Emitida','Pendiente','vencidas'].forEach(k=>{const e=document.getElementById('f-'+k);if(e)e.classList.remove('active');});render();}
 document.getElementById('search-input').addEventListener('input',function(){curSearch=this.value;render();});
 document.getElementById('search-input').addEventListener('keydown',function(e){if(e.key==='Enter'){const q=this.value.trim();if(q){const m=Object.entries(reqMap).filter(([n])=>n.toString().includes(q));if(m.length===1){setTimeout(()=>{const c=document.getElementById('card-'+m[0][0]);if(c&&!c.classList.contains('open'))c.classList.add('open');c&&c.scrollIntoView({behavior:'smooth',block:'start'});},50);}}}});
 
